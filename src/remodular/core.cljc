@@ -100,10 +100,11 @@
      :as event}]
    (dissoc event :state-path)))
 
-(defn create-anonymous-event ([event]
-                              {:actions (:actions event)})
-                             ([]
-                              {}))
+(defn create-anonymous-event
+  ([event]
+   {:actions (:actions event)})
+  ([]
+   {}))
 
 (defn- prepend-state-path
   {:test (fn []
@@ -154,7 +155,7 @@
         state-path           (:state-path args)
         trigger-parent-event (:trigger-parent-event args)]
     (fn [event]
-      (-> (handle-event (deref (:state-ref rum-state)) event)
+      (-> (handle-event (deref (:input-ref rum-state)) event)
           ((fn [handled-event]
              (assert (s/valid? :remodular.spec/event handled-event)
                      (str "The event " event " did not conform to spec after being handled:\n"
@@ -164,6 +165,30 @@
           (trigger-parent-event)))))
 
 (defn modular-component
+  "
+  A Rum component mixin that enables a component to not be reevaluated when its input is equal.
+
+  Usage:
+  A component with this mixin expects a map of arguments as follows:
+  {:input                 -- A map with the data that the component depends on.
+   :trigger-parent-event  -- A function that takes the an event and asks the parent module to
+                             handle it.}
+  It then adds the key :trigger-event key with a function that first handles its passed events
+  with the handle-event function passed to the mixin -- making sure that handle-event always
+  receives the most recent state.
+
+  Discussion:
+  Normally the trigger-event function in the props leads to the component always having changed
+  props and thus being unable to eliminate re-renders of identical inputs.
+  This component excludes the trigger-event function from the equality check while enabling it
+  to still work on the most recent state of any parent components.
+
+  Example bugs solved:
+
+  "
+  ;TODO Unittest if re-render happens.
+  ;TODO Unittest that most recent state is passed to this component and all ancestors when event is triggered by trigger-event and parent state has changed but not this components' state.
+  ;TODO Unittest that most recent parent-trigger-event functions are used in the above case.
   ;{:test (fn []
   ;         (is= (-> {:rum/args (list {:input                {}
   ;                                    :state-ref            (atom :something)
@@ -177,9 +202,9 @@
   ;                                :state-path           []})}))}
   [handle-event]
   {:init          (fn [rum-state _]
-                    (assoc rum-state :state-ref (atom nil))) ;TODO Should this be input-ref?
+                    (assoc rum-state :input-ref (atom nil))) ;TODO Should this be input-ref?
    :before-render (fn [rum-state]
-                    (reset! (:state-ref rum-state) (:state (first (:rum/args rum-state))))
+                    (reset! (:input-ref rum-state) (:input (first (:rum/args rum-state))))
                     (update rum-state :rum/args (fn [[head & tail]]
                                                   (conj tail (assoc head :trigger-event
                                                                          (create-trigger-event rum-state handle-event))))))

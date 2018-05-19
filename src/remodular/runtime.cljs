@@ -1,6 +1,5 @@
 (ns remodular.runtime
   (:require [rum.core :as rum]
-            [util.services-mock.core :refer [mock-url-request!]]
             [cljs.pprint :refer [pprint]]
             [ysera.test :refer [is=]]
             [cljs.core :refer-macros [assert]]))

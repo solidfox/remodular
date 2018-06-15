@@ -200,19 +200,22 @@
   ;                                :trigger-event        :?  ;TODO
   ;                                :trigger-parent-event identity
   ;                                :state-path           []})}))}
-  [handle-event]
-  {:init          (fn [rum-state _]
-                    (assoc rum-state :input-ref (atom nil))) ;TODO Should this be input-ref?
-   :before-render (fn [rum-state]
-                    (reset! (:input-ref rum-state) (:input (first (:rum/args rum-state))))
-                    (update rum-state :rum/args (fn [[head & tail]]
-                                                  (conj tail (assoc head :trigger-event
-                                                                         (create-trigger-event rum-state handle-event))))))
-   :should-update (fn [old-state state]
-                    (let [our-old-state (-> (:rum/args old-state)
-                                            (first)
-                                            (:input))
-                          our-state     (-> (:rum/args state)
-                                            (first)
-                                            (:input))]
-                      (not (identical? our-old-state our-state))))})
+  [& [handle-event]]
+  (let [handle-event (or handle-event
+                         (fn [_state event]
+                           (create-anonymous-event event)))]
+    {:init          (fn [rum-state _]
+                      (assoc rum-state :input-ref (atom nil))) ;TODO Should this be input-ref?
+     :before-render (fn [rum-state]
+                      (reset! (:input-ref rum-state) (:input (first (:rum/args rum-state))))
+                      (update rum-state :rum/args (fn [[head & tail]]
+                                                    (conj tail (assoc head :trigger-event
+                                                                           (create-trigger-event rum-state handle-event))))))
+     :should-update (fn [old-state state]
+                      (let [our-old-state (-> (:rum/args old-state)
+                                              (first)
+                                              (:input))
+                            our-state     (-> (:rum/args state)
+                                              (first)
+                                              (:input))]
+                        (not (identical? our-old-state our-state))))}))

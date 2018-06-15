@@ -43,10 +43,14 @@
                      app-state
                      actions)))))
 
+(defmulti perform-services
+          (fn [{mode :mode
+                :as  _state} _services _reduce-event]
+            mode))
+
 (defn run-modular-app!
   [{get-view                             :get-view
     get-services                         :get-services
-    perform-services                     :perform-services
     app-state-atom                       :app-state-atom
     root-input                           :root-input
     app-id                               :app-id
@@ -56,9 +60,9 @@
      should-log-services      :services} :logging}]
   (let [app-id           (or app-id "app")
         tag-id-for-app   (or app-element-tag-id "app")
-        handle-event     (fn [event]
+        reduce-event     (fn [event]
                            (when should-log-events
-                             (println "---- Handling Event ----")
+                             (println "---- Reducing Event ----")
                              (js/console.log event))
                            (reduce-actions! event app-state-atom))
         render-app-state (fn [app-state]
@@ -66,7 +70,7 @@
                              (println "---- Rendering state ----")
                              (js/console.log app-state))
                            (rum/mount (get-view {:input                (assoc root-input :state app-state)
-                                                 :trigger-parent-event handle-event
+                                                 :trigger-parent-event reduce-event
                                                  :state-path           []})
                                       (js/document.getElementById tag-id-for-app))
                            (when-let [services (and get-services
@@ -75,7 +79,7 @@
                                (when should-log-services
                                  (println "---- Performing Services ----")
                                  (js/console.log services))
-                               (perform-services services handle-event should-log-services))))]
+                               (perform-services app-state services reduce-event))))]
     (add-watch app-state-atom app-id
                (fn [_ _ _old-state new-state]
                  (render-app-state new-state)))

@@ -1,4 +1,4 @@
-(defproject remodular "0.1.4-SNAPSHOT"
+(defproject remodular "0.1.5-SNAPSHOT"
   :description "FIXME: write description"
   :url ""
   :license {}

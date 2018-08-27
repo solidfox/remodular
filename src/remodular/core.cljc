@@ -1,6 +1,7 @@
 (ns remodular.core
   (:require [clojure.pprint :refer [pprint]]
             [ysera.test :refer [is is= is-not]]
+            [ysera.error :refer [error]]
             [#?(:clj  clojure.spec.alpha
                 :cljs cljs.spec.alpha) :as s]
             [remodular.spec]))
@@ -155,7 +156,7 @@
         state-path           (:state-path args)
         trigger-parent-event (:trigger-parent-event args)]
     (fn [event]
-      (-> (handle-event (deref (:input-ref rum-state)) event)
+      (-> (handle-event (deref (::input-ref rum-state)) event)
           ((fn [handled-event]
              (assert (s/valid? :remodular.spec/event handled-event)
                      (str "The event " event " did not conform to spec after being handled:\n"
@@ -201,13 +202,21 @@
   ;                                :trigger-parent-event identity
   ;                                :state-path           []})}))}
   [& [handle-event]]
-  (let [handle-event (or handle-event
+  (let [validate-preconditions (fn [rum-state]
+                                 (let [this-fns-name (str (namespace ::this) "/" (-> #'modular-component meta :name))]
+                                   (when (-> rum-state :rum/args first :trigger-event)
+                                     (error (str this-fns-name ": The trigger-event keyword was already in use. When providing a trigger-event callback to modular component, use trigger-parent-event instead.")))
+                                   (when (not (-> rum-state :rum/args first :state-path))
+                                     (error (str this-fns-name ": No state-path was provided in the argument map.")))))
+
+        handle-event (or handle-event
                          (fn [_state event]
                            (create-anonymous-event event)))]
     {:init          (fn [rum-state _]
-                      (assoc rum-state :input-ref (atom nil))) ;TODO Should this be input-ref?
+                      (assoc rum-state ::input-ref (atom nil)))
      :before-render (fn [rum-state]
-                      (reset! (:input-ref rum-state) (:input (first (:rum/args rum-state))))
+                      (validate-preconditions rum-state)
+                      (reset! (::input-ref rum-state) (:input (first (:rum/args rum-state))))
                       (update rum-state :rum/args (fn [[head & tail]]
                                                     (conj tail (assoc head :trigger-event
                                                                            (create-trigger-event rum-state handle-event))))))

@@ -1,4 +1,4 @@
-(ns remodular.runtime
+(ns remodular.engine
   (:require [rum.core :as rum]
             [cljs.pprint :refer [pprint]]
             [ysera.test :refer [is=]]
@@ -22,7 +22,8 @@
               state-path :state-path
               :or        {state-path []}
               :as        _action}]
-  (let [[change-fn & args] fn-call]
+  (let [[change-fn & args] fn-call
+        state-path (concat [::render-input] state-path)]
     (if (> (count state-path) 0)
       (apply update-in
              app-state
@@ -47,6 +48,9 @@
           (fn [{mode :mode
                 :as  _state} _services _reduce-event]
             mode))
+
+(defn needs-render [old-state new-state]
+  (not (identical? (::render-input old-state) (::render-input new-state))))
 
 (defn run-modular-app!
   [{get-view                             :get-view
@@ -81,7 +85,7 @@
                                  (js/console.log services))
                                (perform-services app-state services reduce-event))))]
     (add-watch app-state-atom app-id
-               (fn [_ _ _old-state new-state]
-                 (render-app-state new-state)))
-
-    (render-app-state (deref app-state-atom))))
+               (fn [_ _ old-state new-state]
+                 (if (needs-render old-state new-state)
+                   (render-app-state (::render-input new-state)))))
+    (render-app-state (::render-input (deref app-state-atom)))))

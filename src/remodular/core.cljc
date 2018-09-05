@@ -230,4 +230,4 @@
                             our-new-input (-> (:rum/args state)
                                               (first)
                                               (:input))]
-                        (not (identical? our-old-state our-state))))}))
+                        (not (= our-old-input our-new-input))))}))

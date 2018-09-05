@@ -205,9 +205,12 @@
   (let [validate-preconditions (fn [rum-state]
                                  (let [this-fns-name (str (namespace ::this) "/" (-> #'modular-component meta :name))]
                                    (when (-> rum-state :rum/args first :trigger-event)
-                                     (error (str this-fns-name ": The trigger-event keyword was already in use. When providing a trigger-event callback to modular component, use trigger-parent-event instead.")))
+                                     (js/console.warn (str this-fns-name ": The trigger-event keyword was already in use. When providing a trigger-event callback to modular component, use trigger-parent-event instead.\n"
+                                                           rum-state)))
+                                   ;TODO change where trigger-event gets injected.
                                    (when (not (-> rum-state :rum/args first :state-path))
-                                     (error (str this-fns-name ": No state-path was provided in the argument map.")))))
+                                     (js/console.warn (str this-fns-name ": No state-path was provided in the argument map.\n"
+                                                           rum-state)))))
 
         handle-event (or handle-event
                          (fn [_state event]
@@ -221,10 +224,10 @@
                                                     (conj tail (assoc head :trigger-event
                                                                            (create-trigger-event rum-state handle-event))))))
      :should-update (fn [old-state state]
-                      (let [our-old-state (-> (:rum/args old-state)
+                      (let [our-old-input (-> (:rum/args old-state)
                                               (first)
                                               (:input))
-                            our-state     (-> (:rum/args state)
+                            our-new-input (-> (:rum/args state)
                                               (first)
                                               (:input))]
                         (not (identical? our-old-state our-state))))}))

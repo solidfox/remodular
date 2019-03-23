@@ -61,46 +61,6 @@
 (defn update-state [function & args]
   (create-action {:fn-and-args (concat [function] args)}))
 
-(defn append-action
-  {:test (fn []
-           (is= (append-action {} {:fn-and-args [:dummy-function]})
-                {:actions [{:fn-and-args [:dummy-function]}]})
-           (let [event {:actions [{:fn-and-args [:dummy-function-1]}]}]
-             (is= (append-action event {:fn-and-args [:dummy-function-2]})
-                  {:actions [{:fn-and-args [:dummy-function-1]}
-                             {:fn-and-args [:dummy-function-2]}]})))}
-  [event action]
-  (update event :actions concat [action]))
-
-(defn create-event
-  "Takes over ownership of an event by applying a view-module's own API naming to it."
-  {:test (fn []
-           (is= (create-event {:name          :old-name
-                               :data       {}
-                               :state-path [:child :path]
-                               :actions    :should-remain}
-                              {:new-name :new-name
-                               :new-data {:new-data {}}})
-                {:name    :new-name
-                 :data    {:new-data {}}
-                 :actions :should-remain})
-           (is= (create-event {:name          :old-name
-                               :data       {}
-                               :state-path [:child :path]
-                               :actions    :should-remain})
-                {:name    :old-name
-                 :data    {}
-                 :actions :should-remain}))}
-  ([child-event {new-name :new-name
-                 new-data :new-data}]
-   (merge (when-not (nil? new-name) {:name new-name})
-          (when-not (nil? new-data) {:data new-data})
-          {:actions (:actions child-event)}))
-  ([{name :name
-     data :data
-     :as event}]
-   (dissoc event :state-path)))
-
 (defn create-anonymous-event
   ([event]
    {:actions (:actions event)})
@@ -165,6 +125,11 @@
           (prepend-state-path-to-event state-path)
           (trigger-parent-event)))))
 
+(defn console-warn [& args]
+  #?(:clj (do (println "WARNING")
+              (apply println args))
+     :cljs (apply js/console.warn args)))
+
 (defn modular-component
   "
   A Rum component mixin that enables a component to not be reevaluated when its input is equal.
@@ -205,12 +170,12 @@
   (let [validate-preconditions (fn [rum-state]
                                  (let [this-fns-name (str (namespace ::this) "/" (-> #'modular-component meta :name))]
                                    (when (-> rum-state :rum/args first :trigger-event)
-                                     (js/console.warn (str this-fns-name ": The trigger-event keyword was already in use. When providing a trigger-event callback to modular component, use trigger-parent-event instead.\n"
-                                                           rum-state)))
+                                     (console-warn (str this-fns-name ": The trigger-event keyword was already in use. When providing a trigger-event callback to modular component, use trigger-parent-event instead.\n"
+                                                        rum-state)))
                                    ;TODO change where trigger-event gets injected.
                                    (when (not (-> rum-state :rum/args first :state-path))
-                                     (js/console.warn (str this-fns-name ": No state-path was provided in the argument map.\n"
-                                                           rum-state)))))
+                                     (console-warn (str this-fns-name ": No state-path was provided in the argument map.\n"
+                                                        rum-state)))))
 
         handle-event (or handle-event
                          (fn [_state event]

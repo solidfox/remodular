@@ -1,8 +1,8 @@
 (ns remodular.engine
   (:require [rum.core :as rum]
-            [cljs.pprint :refer [pprint]]
+            [clojure.pprint :refer [pprint]]
             [ysera.test :refer [is=]]
-            [cljs.core :refer-macros [assert]]))
+            [cljs.spec.alpha :as s]))
 
 (defn perform-action
   {:test (fn []

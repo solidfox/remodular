@@ -1,10 +1,15 @@
 (ns remodular.engine
   (:require [ysera.test :refer [is=]]
             [cljs.spec.alpha :as s]
+            [remodular.core :as core]
             [remodular.event :as event]))
 
 (defn perform-action
-  {:test (fn []
+  {:spec (s/fdef perform-action
+                 :args (s/cat :app-state ::core/state
+                              :action ::event/action)
+                 :ret ::core/state)
+   :test (fn []
            (is= (-> {:a {:b "pre"}}
                     (perform-action (event/create-action {:fn-and-args [assoc :b "post"]
                                                           :state-path  [:a]})))
@@ -34,8 +39,8 @@
              args))))
 
 (defn reduce-actions!
-  [{actions :actions}
-   app-state-atom]
+  [app-state-atom
+   actions]
   (when (not-empty actions)
     (swap! app-state-atom
            (fn [app-state]

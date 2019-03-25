@@ -42,25 +42,6 @@
   (= (:state-path event)
      child-state-path))
 
-(defn create-action
-  {:test (fn []
-           (is= (create-action {:name        "test"
-                                :fn-and-args []})
-                {:name        "test"
-                 :fn-and-args []
-                 :state-path  []})
-           (is= (create-action {:fn-and-args [:test]})
-                {:fn-and-args [:test]
-                 :state-path  []}))}
-  [{name        :name
-    fn-and-args :fn-and-args}]
-  (merge (when-not (nil? name) {:name name})
-         {:fn-and-args fn-and-args
-          :state-path  []}))
-
-(defn update-state [function & args]
-  (create-action {:fn-and-args (concat [function] args)}))
-
 (defn create-anonymous-event
   ([event]
    {:actions (:actions event)})

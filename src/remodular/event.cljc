@@ -7,77 +7,83 @@
             [remodular.devtools :as dt]))
 
 (s/def ::name qualified-keyword?)
-(s/def ::state map?)
-(s/def ::state-path (s/and #(not (nil? %)) seqable?))
 (s/def ::event (s/keys :req [::name
-                             ::state-path]
+                             ::core/state-path]
                        :opt [::data]))
+(defn create-event
+  {:spec (s/fdef create-event :args (s/cat :kwargs (s/keys :req-un [::name
+                                                                    ::core/state-path])))
+   :test (fn []
+           (yt/is= (create-event {:name       ::old-name
+                                  :state-path []
+                                  :data       {}})
+                   {::name            ::old-name
+                    ::core/state-path []
+                    ::data            {}}))}
+  [{name       :name
+    state-path :state-path
+    data       :data}]
+  {::name            name
+   ::core/state-path state-path
+   ::data            data})
+
 (s/def ::source-event ::event)
 (s/def ::fn-and-args (s/cat :fn fn?
                             :args (s/* any?)))
-
-(s/def ::action (s/keys :req [::state-path
+(s/def ::action (s/keys :req [::core/state-path
                               ::fn-and-args]
                         :opt [::name
                               ::source-event]))
-(s/def ::action-list (s/and seqable?
-                            (s/coll-of ::action)))
-(s/def ::event-handler-fn fn?)
-(s/def ::event-handler (s/keys :req-un [::state-path
-                                        ::event-handler-fn]))
-
 (defn create-action
   {:spec (s/fdef create-action
                  :args (s/cat :kwargs (s/or :state-path (s/keys :req-un [::fn-and-args
-                                                                         ::state-path]
-                                                                :opt-un [::name])
-                                            :source-event (s/keys :req-un [::fn-and-args
-                                                                           ::source-event]
-                                                                  :opt-un [::name])))
+                                                                         (or ::core/state-path
+                                                                             ::source-event)]
+                                                                :opt-un [::name])))
                  :ret ::action)
    :test (fn []
            (yt/is= (create-action {:name        ::test
                                    :fn-and-args [identity]
                                    :state-path  []})
-                   {::name        ::test
-                    ::fn-and-args [identity]
-                    ::state-path  []})
+                   {::name            ::test
+                    ::fn-and-args     [identity]
+                    ::core/state-path []})
            (yt/is= (create-action {:fn-and-args [identity :test]
                                    :state-path  []})
-                   {::fn-and-args [identity :test]
-                    ::state-path  []}))}
+                   {::fn-and-args     [identity :test]
+                    ::core/state-path []}))}
   [{name         :name
     fn-and-args  :fn-and-args
     state-path   :state-path
     source-event :source-event}]
   (merge (when-not (nil? name) {::name name})
-         {::fn-and-args fn-and-args
-          ::state-path  (or state-path (:state-path source-event))}))
+         {::fn-and-args     fn-and-args
+          ::core/state-path (or state-path (:state-path source-event))}))
 
-(defn create-event
-  {:spec (s/fdef create-event :args (s/cat :kwargs (s/keys :req-un [::name
-                                                                    ::state-path])))
-   :test (fn []
-           (yt/is= (create-event {:name       ::old-name
-                                  :state-path []
-                                  :data       {}})
-                   {::name       ::old-name
-                    ::state-path []
-                    ::data       {}}))}
-  [{name       :name
-    state-path :state-path
-    data       :data}]
-  {::name       name
-   ::state-path state-path
-   ::data       data})
-
+(s/def ::event-handler-fn fn?)
+(s/def ::event-handler (s/keys :req-un [::core/state-path
+                                        ::event-handler-fn]))
+(defn create-event-handler
+  {:spec (s/fdef create-event-handler
+                 :args (s/cat :kwargs (s/keys* :req-un [::event-handler-fn
+                                                        ::core/state-path]))
+                 :ret ::event-handler)
+   :test (fn [] (yt/is= (create-event-handler :event-handler-fn identity
+                                              :state-path [])
+                        {::event-handler-fn identity
+                         ::core/state-path  []}))}
+  [& {:keys [event-handler-fn state-path]}]
+  {::event-handler-fn event-handler-fn
+   ::core/state-path  state-path})
 (defn append-action
   [actions action]
   (concat actions [action]))
 
+(s/def ::action-list (s/and seqable?
+                            (s/coll-of ::action)))
 (defn get-actions-from-event
   {:spec (s/fdef get-actions-from-event
-                 :args (s/cat :state map?
+                 :args (s/cat :state ::core/state
                               :event-handler ::event-handler
                               :event ::event
                               :descendant-actions ::action-list)

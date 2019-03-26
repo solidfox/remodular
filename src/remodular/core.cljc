@@ -3,6 +3,7 @@
             [clojure.spec.alpha :as s]
             [clojure.spec.gen.alpha :as gen]
             [clojure.spec.test.alpha :as stest]
+            [remodular.devtools :as dt]
             [remodular.environment :as env]
             [ysera.error :refer [error]]
             [ysera.test :as yt :refer [is is= is-not]]))
@@ -87,64 +88,67 @@
                                 (prepend-state-path action path-to-me))
                               actions)))))
 
-(s/def ::name qualified-keyword?)
+(s/def ::name keyword?)
+
 (s/def ::data any?)
-(s/def ::event (s/keys :req [::name
-                             ::state-path]
-                       :opt [::data]))
+(s/def ::event (s/keys :req-un [::name
+                                ::state-path]
+                       :opt-un [::data]))
 (defn create-event
   {:spec (s/fdef create-event :args (s/cat :kwargs (s/keys :req-un [::name
-                                                                    ::state-path])))
+                                                                    ::state-path]
+                                                           :opt-un [::data])))
    :test (fn []
            (yt/is= (create-event {:name       ::old-name
                                   :state-path []
                                   :data       {}})
-                   {::name            ::old-name
-                    ::state-path []
-                    ::data            {}}))}
+                   {:name       ::old-name
+                    :state-path []
+                    :data       {}}))}
   [{name       :name
     state-path :state-path
     data       :data}]
-  {::name            name
-   ::state-path state-path
-   ::data            data})
-
+  {:name       name
+   :state-path state-path
+   :data       data})
 (s/def ::source-event ::event)
+
 (s/def ::fn-and-args (s/cat :fn fn?
                             :args (s/* any?)))
-(s/def ::action (s/keys :req [::state-path
-                              ::fn-and-args]
-                        :opt [::name
-                              ::source-event]))
+(s/def ::action (s/keys :req-un [::state-path
+                                 ::fn-and-args]
+                        :opt-un [::name
+                                 ::source-event]))
 (defn create-action
   {:spec (s/fdef create-action
                  :args (s/cat :kwargs (s/or :state-path (s/keys :req-un [::fn-and-args
-                                                                         (or ::state-path
-                                                                             ::source-event)]
-                                                                :opt-un [::name])))
+                                                                         ::state-path]
+                                                                :opt-un [::name
+                                                                         ::source-event])))
                  :ret ::action)
    :test (fn []
            (yt/is= (create-action {:name        ::test
                                    :fn-and-args [identity]
                                    :state-path  []})
-                   {::name            ::test
-                    ::fn-and-args     [identity]
-                    ::state-path []})
+                   {:name        ::test
+                    :fn-and-args [identity]
+                    :state-path  []})
            (yt/is= (create-action {:fn-and-args [identity :test]
                                    :state-path  []})
-                   {::fn-and-args     [identity :test]
-                    ::state-path []}))}
+                   {:fn-and-args [identity :test]
+                    :state-path  []}))}
   [{name         :name
     fn-and-args  :fn-and-args
     state-path   :state-path
     source-event :source-event}]
-  (merge (when-not (nil? name) {::name name})
-         {::fn-and-args     fn-and-args
-          ::state-path (or state-path (:state-path source-event))}))
-
+  (merge (when-not (nil? name) {:name name})
+         (when-not (nil? source-event) {:source-event source-event})
+         {:fn-and-args fn-and-args
+          :state-path  state-path}))
 (s/def ::action-list (s/with-gen (s/and seqable?
                                         (s/coll-of ::action))
                                  (fn [] (gen/return []))))
+
 (s/def ::event-handler-fn
   (s/with-gen
     (s/fspec :args (s/cat :event ::event
@@ -152,8 +156,8 @@
                                                     ::action-list])))
     (fn [] (gen/return (fn [event & {:keys [state descendant-actions]}]
                          [(s/gen ::event) (s/gen ::action-list)])))))
-(s/def ::event-handler (s/keys :req [::state-path
-                                     ::event-handler-fn]))
+(s/def ::event-handler (s/keys :req-un [::state-path
+                                        ::event-handler-fn]))
 (defn create-event-handler
   {:spec (s/fdef create-event-handler
                  :args (s/cat :kwargs (s/keys* :req-un [::event-handler-fn
@@ -163,11 +167,42 @@
                                          [nil []])]
                   (yt/is= (create-event-handler :event-handler-fn event-handler-fn
                                                 :state-path [])
-                          {::event-handler-fn event-handler-fn
-                           ::state-path  []})))}
+                          {:event-handler-fn event-handler-fn
+                           :state-path       []})))}
   [& {:keys [event-handler-fn state-path]}]
-  {::event-handler-fn event-handler-fn
-   ::state-path  state-path})
+  {:event-handler-fn event-handler-fn
+   :state-path       state-path})
+
+(s/def ::event-handler-chain (s/coll-of ::event-handler))
+(s/def ::app-trigger-event (s/fspec :args (s/cat :event ::event :kwargs (s/keys* :req-un [::event-handler-chain]))))
+(s/def ::module-context (s/keys :req-un [::app-trigger-event ::state-path ::event-handler-chain]))
+(s/def ::parent-context ::module-context)
+(s/def ::child-state-path ::state-path)
+(defn create-child-context
+  {:spec (s/fdef create-child-context :args (s/keys* :req-un [::parent-context
+                                                              ::child-state-path]))}
+  [& {:keys [parent-context
+             child-state-path]}]
+  (as-> parent-context $
+        (update $ :state-path concat child-state-path)))
+(defn add-event-handler
+  {:spec (s/fdef add-event-handler :args (s/cat :module-context ::module-context
+                                                :event-handler-fn ::event-handler-fn))}
+  [module-context event-handler-fn]
+  (let [event-handler (create-event-handler {:event-handler-fn event-handler-fn
+                                             :state-path       (:state-path module-context)})]
+    (update module-context ::event-handler-chain concat [event-handler])))
+
+(defn trigger-event
+  {:spec (s/fdef trigger-event :args (s/keys* :req-un [::module-context
+                                                       ::name
+                                                       ::data]))}
+  [& {module-context :module-context
+      name           :name
+      data           :data}]
+  (let [app-trigger-event (:app-trigger-event module-context)]
+    (app-trigger-event (create-event {:name name
+                                      :data data}))))
 
 (defn append-action
   [actions action]
@@ -181,15 +216,18 @@
                  :ret (s/cat :event ::event :action-list ::action-list))
    :test (fn [] (yt/is= (get-actions-from-event {:test {:path {:key :this-should-be-passed}}}
                                                 (create-event-handler :state-path [:test :path]
-                                                                      :event-handler-fn (fn [event & {:keys [state descendant-actions]}]
+                                                                      :event-handler-fn (fn [event & {:keys [state
+                                                                                                             handler-state-path
+                                                                                                             descendant-actions]}]
                                                                                           (when (and (= (:key state) :this-should-be-passed)
-                                                                                                     (= (::name event) ::test-event))
+                                                                                                     (= handler-state-path (:state-path event))
+                                                                                                     (= (:name event) ::test-event))
                                                                                             [(create-event {:name       ::bubbled-test-event
                                                                                                             :state-path []})
                                                                                              (append-action descendant-actions
                                                                                                             (create-action {:fn-and-args [identity :parent] :state-path []}))])))
                                                 (create-event {:name       ::test-event
-                                                               :state-path []})
+                                                               :state-path [:test :path]})
                                                 [(create-action {:fn-and-args [identity :child] :state-path []})])
                         [(create-event {:name       ::bubbled-test-event
                                         :state-path []})
@@ -200,25 +238,17 @@
    event-handler
    event
    descendant-actions]
-  (let [{state-path       ::state-path
-         event-handler-fn ::event-handler-fn} event-handler]
-    (event-handler-fn event :state (get-in state state-path) :descendant-actions descendant-actions)))
-
-;(comment "Example event-handler-chain"
-;         ({:state-path       []
-;           :event-handler-fn (event-handler [state event actions] -> more-actions)
-;           {:state-path       [:pages :welcome]
-;            :event-handler-fn (event-handler [state event actions] -> more-actions)
-;                             {:state-path       [:modules :user-profile]
-;                              :event-handler-fn (event-handler [state event actions] -> more-actions)}}})
-;         "Reduced to"
-;         ({:state-path [:pages :welcome :modules :user-profile] :action-fn (fn [module-state]
-;                                                                             modified-module-state)}))
+  (let [{handler-state-path :state-path
+         event-handler-fn   :event-handler-fn} event-handler]
+    (event-handler-fn event
+                      :state (get-in state handler-state-path)
+                      :handler-state-path handler-state-path
+                      :descendant-actions descendant-actions)))
 
 (defn get-actions
   {:spec (s/fdef get-actions
                  :args (s/cat :event ::event
-                              :state map?
+                              :state ::state
                               :event-handler-chain (s/coll-of ::event-handler))
                  :ret ::action-list)}
   [event state event-handler-chain]

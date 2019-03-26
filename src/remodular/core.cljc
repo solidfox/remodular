@@ -195,14 +195,16 @@
 
 (defn trigger-event
   {:spec (s/fdef trigger-event :args (s/keys* :req-un [::module-context
-                                                       ::name
-                                                       ::data]))}
-  [& {module-context :module-context
-      name           :name
-      data           :data}]
-  (let [app-trigger-event (:app-trigger-event module-context)]
-    (app-trigger-event (create-event {:name name
-                                      :data data}))))
+                                                       (or ::name
+                                                           ::event)]
+                                              :opt-un [::data]))}
+  [& {{app-trigger-event   :app-trigger-event
+       event-handler-chain :event-handler-chain} :module-context
+      :keys                                      [name data event]}]
+  (let [app-trigger-event app-trigger-event]
+    (app-trigger-event (create-event (or event {:name name
+                                                :data data}))
+                       :event-handler-chain event-handler-chain)))
 
 (defn append-action
   [actions action]
@@ -222,17 +224,17 @@
                                                                                           (when (and (= (:key state) :this-should-be-passed)
                                                                                                      (= handler-state-path (:state-path event))
                                                                                                      (= (:name event) ::test-event))
-                                                                                            [(create-event {:name       ::bubbled-test-event
-                                                                                                            :state-path []})
-                                                                                             (append-action descendant-actions
-                                                                                                            (create-action {:fn-and-args [identity :parent] :state-path []}))])))
+                                                                                            {:bubble-event (create-event {:name       ::bubbled-test-event
+                                                                                                                          :state-path []})
+                                                                                             :actions      (append-action descendant-actions
+                                                                                                                          (create-action {:fn-and-args [identity :parent] :state-path []}))})))
                                                 (create-event {:name       ::test-event
                                                                :state-path [:test :path]})
                                                 [(create-action {:fn-and-args [identity :child] :state-path []})])
-                        [(create-event {:name       ::bubbled-test-event
-                                        :state-path []})
-                         [(create-action {:fn-and-args [identity :child] :state-path []})
-                          (create-action {:fn-and-args [identity :parent] :state-path []})]]))}
+                        {:bubble-event (create-event {:name       ::bubbled-test-event
+                                                      :state-path []})
+                         :actions      [(create-action {:fn-and-args [identity :child] :state-path []})
+                                        (create-action {:fn-and-args [identity :parent] :state-path []})]}))}
 
   [state
    event-handler
@@ -240,10 +242,16 @@
    descendant-actions]
   (let [{handler-state-path :state-path
          event-handler-fn   :event-handler-fn} event-handler]
-    (event-handler-fn event
-                      :state (get-in state handler-state-path)
-                      :handler-state-path handler-state-path
-                      :descendant-actions descendant-actions)))
+    (let [actions-and-maybe-bubble-event (event-handler-fn event
+                                                           :state (get-in state handler-state-path)
+                                                           :handler-state-path handler-state-path
+                                                           :descendant-actions descendant-actions)]
+      (if (:actions actions-and-maybe-bubble-event)
+        actions-and-maybe-bubble-event
+        {:actions actions-and-maybe-bubble-event}))))
+
+
+
 
 (defn get-actions
   {:spec (s/fdef get-actions
@@ -254,11 +262,11 @@
   [event state event-handler-chain]
   (->> event-handler-chain
        (reduce
-         (fn [[event actions] event-handler]
-           (if event
-             (get-actions-from-event state event-handler event actions)
+         (fn [{:keys [bubble-event actions]} event-handler]
+           (if bubble-event
+             (dt/spy (get-actions-from-event state event-handler event actions))
              (reduced [nil actions])))
-         [event []])
-       (second)))
+         {:bubble-event event :actions []})
+       :actions))
 
 (when env/debug (stest/instrument))

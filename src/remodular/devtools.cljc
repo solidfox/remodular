@@ -1,4 +1,5 @@
-(ns remodular.devtools)
+(ns remodular.devtools
+  (:require [clojure.pprint]))
 
 (defn spy [& args]
   (doall

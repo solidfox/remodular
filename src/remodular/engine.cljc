@@ -29,17 +29,16 @@
               state-path  :state-path
               :or         {state-path []}
               :as         _action}]
-  (dt/spy "perform action" _action)
   (let [[change-fn & args] fn-and-args]
     (if (empty? state-path)
       (apply change-fn
              app-state
              args)
-      (dt/spy (apply update-in
-                     app-state
-                     state-path
-                     change-fn
-                     args)))))
+      (apply update-in
+             app-state
+             state-path
+             change-fn
+             args))))
 
 (defn reduce-actions
   [state actions]
@@ -56,7 +55,6 @@
   [state-atom event event-handler-chain]
   (swap! state-atom
         (fn [state]
-          (dt/spy "SWAP!")
           (let [actions (core/get-actions event state event-handler-chain)]
             (reduce-actions state actions)))))
 

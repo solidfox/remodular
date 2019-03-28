@@ -10,20 +10,20 @@
 (defn perform-action
   {:spec (s/fdef perform-action
                  :args (s/cat :app-state ::core/state
-                              :action ::core/action)
+                              :action ::core/qualified-action)
                  :ret ::core/state)
    :test (fn []
            (is= (-> {:a {:b "pre"}}
-                    (perform-action (core/create-action {:fn-and-args [assoc :b "post"]
-                                                         :state-path  [:a]})))
+                    (perform-action (core/create-qualified-action {:fn-and-args [assoc :b "post"]
+                                                                   :state-path  [:a]})))
                 {:a {:b "post"}})
            (is= (-> {:b "pre"}
-                    (perform-action (core/create-action {:fn-and-args [assoc :b "post"]
-                                                         :state-path  []})))
+                    (perform-action (core/create-qualified-action {:fn-and-args [assoc :b "post"]
+                                                                   :state-path  []})))
                 {:b "post"})
            (is= (-> {:c {:a {:b "pre"}}}
-                    (perform-action (core/create-action {:fn-and-args [assoc :b "post"]
-                                                         :state-path  [:c :a]})))
+                    (perform-action (core/create-qualified-action {:fn-and-args [assoc :b "post"]
+                                                                   :state-path  [:c :a]})))
                 {:c {:a {:b "post"}}}))}
   [app-state {fn-and-args :fn-and-args
               state-path  :state-path

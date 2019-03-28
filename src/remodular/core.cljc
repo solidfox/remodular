@@ -173,12 +173,12 @@
                                         (s/coll-of ::qualified-action))
                                  (fn [] (gen/return []))))
 
-(s/def :sans-event-handling/module-context (s/keys :req-un [::state-path]))
+(s/def ::event-context (s/keys :req-un [::state-path]))
 (s/def ::descendant-actions ::action-list)
 (s/def ::event-handler-fn
   (s/fspec :args (s/cat :event ::event
                         :kwargs (s/keys* :req-un [::state
-                                                  :sans-event-handling/module-context
+                                                  ::event-context
                                                   ::descendant-actions]))))
 (s/def ::raw-event-handler-fn
   (s/with-gen
@@ -203,25 +203,26 @@
   (fn [event & {:keys [state
                        module-context
                        descendant-actions]}]
-    (merge (when (fn? bubble-event-generator) {:bubble-event (bubble-event-generator event :state state :module-context module-context :descendant-actions descendant-actions)})
-           {:actions (->> (concat (when (not ignore-descendant-actions) descendant-actions)
-                                  (cond
-                                    (and (fn? handle-own-events-fn) (triggered-by-self? module-context event))
-                                    (handle-own-events-fn event :state state :module-context module-context :descendant-actions descendant-actions)
+    (dt/spy "create-event-handler-fn" event module-context)
+    (dt/spy (merge (when (fn? bubble-event-generator) {:bubble-event (bubble-event-generator event :state state :module-context module-context :descendant-actions descendant-actions)})
+                   {:actions (->> (concat (when (not ignore-descendant-actions) descendant-actions)
+                                          (cond
+                                            (and (fn? handle-own-events-fn) (triggered-by-self? module-context event))
+                                            (handle-own-events-fn event :state state :module-context module-context :descendant-actions descendant-actions)
 
-                                    (fn? handle-descendant-events-fn)
-                                    (handle-descendant-events-fn event :state state :module-context module-context :descendant-actions descendant-actions)
+                                            (fn? handle-descendant-events-fn)
+                                            (handle-descendant-events-fn event :state state :module-context module-context :descendant-actions descendant-actions)
 
-                                    :else
-                                    nil))
-                          (map (fn [action]
-                                 (merge action
-                                        (when (not (s/valid? ::qualified-action action)) {:state-path (:state-path module-context)})
-                                        (when (not (:source-event action)) {:source-event event})))))})))
+                                            :else
+                                            nil))
+                                  (map (fn [action]
+                                         (merge action
+                                                (when (not (s/valid? ::qualified-action action)) {:state-path (:state-path module-context)})
+                                                (when (not (:source-event action)) {:source-event event})))))}))))
 
 
 
-(s/def ::event-handler (s/keys :req-un [::state-path
+(s/def ::event-handler (s/keys :req-un [::event-context
                                         ::event-handler-fn]))
 (defn create-event-handler
   {:spec (s/fdef create-event-handler
@@ -230,12 +231,12 @@
    :test (fn [] (let [event-handler-fn (fn [event & {:keys [state descendant-actions]}]
                                          [nil []])]
                   (yt/is= (create-event-handler {:event-handler-fn event-handler-fn
-                                                 :state-path       []})
+                                                 :event-context    {:state-path []}})
                           {:event-handler-fn event-handler-fn
-                           :state-path       []})))}
-  [{:keys [event-handler-fn state-path]}]
+                           :event-context    {:state-path []}})))}
+  [{:keys [event-handler-fn event-context]}]
   {:event-handler-fn event-handler-fn
-   :state-path       state-path})
+   :event-context    event-context})
 (s/def ::event-handler-chain (s/coll-of ::event-handler))
 (s/def ::app-trigger-event (s/fspec :args (s/cat :event ::event :kwargs (s/keys* :req-un [::event-handler-chain]))))
 (s/def ::module-context (s/keys :req-un [::app-trigger-event ::state-path ::event-handler-chain]))
@@ -281,35 +282,39 @@
                               :event (s/nilable ::event)
                               :descendant-actions ::action-list)
                  :ret (s/cat :event ::event :action-list ::action-list))
-   :test (fn [] (yt/is= (get-actions-from-event {:test {:path {:key :this-should-be-passed}}}
-                                                (create-event-handler {:state-path       [:test :path]
-                                                                       :event-handler-fn (fn [event & {:keys [state
-                                                                                                              handler-state-path
-                                                                                                              descendant-actions]}]
-                                                                                           (when (and (= (:key state) :this-should-be-passed)
-                                                                                                      (= handler-state-path (:state-path event))
-                                                                                                      (= (:name event) ::test-event))
-                                                                                             {:bubble-event (create-event {:name       ::bubbled-test-event
-                                                                                                                           :state-path []})
-                                                                                              :actions      (append-action descendant-actions
-                                                                                                                           (create-qualified-action {:fn-and-args [identity :parent] :state-path []}))}))})
-                                                (create-event {:name       ::test-event
-                                                               :state-path [:test :path]})
-                                                [(create-qualified-action {:fn-and-args [identity :child] :state-path []})])
-                        {:bubble-event (create-event {:name       ::bubbled-test-event
-                                                      :state-path []})
-                         :actions      [(create-qualified-action {:fn-and-args [identity :child] :state-path []})
-                                        (create-qualified-action {:fn-and-args [identity :parent] :state-path []})]}))}
+   :test (fn []
+           (yt/is= (get-actions-from-event
+                     {:test {:path {:key :this-should-be-passed}}}
+                     (create-event-handler
+                       {:event-context    {:state-path [:test :path]}
+                        :event-handler-fn (fn [event & {:keys [state
+                                                               event-context
+                                                               descendant-actions]}]
+                                            (when (and (= (:key state) :this-should-be-passed)
+                                                       (= (:state-path event-context) (:state-path event))
+                                                       (= (:name event) ::test-event))
+                                              {:bubble-event (create-event {:name       ::bubbled-test-event
+                                                                            :state-path []})
+                                               :actions      (append-action descendant-actions
+                                                                            (create-qualified-action {:fn-and-args [identity :parent] :state-path []}))}))})
+                     (create-event {:name       ::test-event
+                                    :state-path [:test :path]})
+                     [(create-qualified-action {:fn-and-args [identity :child] :state-path []})])
+                   {:bubble-event (create-event {:name       ::bubbled-test-event
+                                                 :state-path []})
+                    :actions      [(create-qualified-action {:fn-and-args [identity :child] :state-path []})
+                                   (create-qualified-action {:fn-and-args [identity :parent] :state-path []})]}))}
 
   [state
    event-handler
    event
    descendant-actions]
-  (let [{handler-state-path :state-path
-         event-handler-fn   :event-handler-fn} event-handler]
-    (let [actions-and-maybe-bubble-event (event-handler-fn event
+  (let [{event-context    :event-context
+         event-handler-fn :event-handler-fn} event-handler]
+    (let [handler-state-path             (:state-path event-context)
+          actions-and-maybe-bubble-event (event-handler-fn event
                                                            :state (get-in state handler-state-path)
-                                                           :handler-state-path handler-state-path
+                                                           :event-context event-context
                                                            :descendant-actions descendant-actions)]
       (if (:actions actions-and-maybe-bubble-event)
         actions-and-maybe-bubble-event
@@ -330,10 +335,10 @@
                                 {}
                                 [(create-event-handler {:event-handler-fn (fn [& args] [(create-qualified-action {:fn-and-args [conj 1]
                                                                                                                   :state-path  []})])
-                                                        :state-path       [:path 1]})
+                                                        :event-context    {:state-path [:path 1]}})
                                  (create-event-handler {:event-handler-fn (fn [& args] [(create-qualified-action {:fn-and-args [cons 2]
                                                                                                                   :state-path  []})])
-                                                        :state-path       [:path 2]})])
+                                                        :event-context    {:state-path [:path 2]}})])
                    [(create-qualified-action {:fn-and-args [cons 2]
                                               :state-path  []})]))}
   [event state event-handler-chain]

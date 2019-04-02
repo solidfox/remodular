@@ -188,7 +188,7 @@
                          {:bubble-event (s/gen ::event)
                           :actions      (s/gen ::action-list)})))))
 (defn create-event-handler-fn
-  {:spec (do (s/def ::bubble-event-generator (s/or fn? set?))
+  {:spec (do (s/def ::bubble-event-generator (s/or :function fn? :set set?))
              (s/def ::ignore-descendant-actions (s/nilable boolean?))
              (s/def ::handle-own-events-fn fn?)
              (s/def ::handle-descendant-events-fn fn?)
@@ -204,9 +204,16 @@
                                        :state {}
                                        :event-context {:state-path [:test :path]}
                                        :descendant-actions [])
-                     {:actions [(create-action {:fn-and-args [identity 1]
+                     {:actions [(create-action {:fn-and-args  [identity 1]
                                                 :source-event (create-event {:name :test :state-path [:test :path]})
-                                                :state-path [:test :path]})]})))}
+                                                :state-path   [:test :path]})]}))
+           (let [bubbling-event-handler-fn (create-event-handler-fn {:bubble-event-generator #{:test}})]
+             (yt/is= (bubbling-event-handler-fn (create-event {:name :test :state-path [:test :path]})
+                                                :state {}
+                                                :event-context {:state-path [:test :path]}
+                                                :descendant-actions [])
+                     {:bubble-event (create-event {:name :test :state-path [:test :path]})
+                      :actions      []})))}
   [{:keys [bubble-event-generator
            ignore-descendant-actions
            handle-own-events-fn

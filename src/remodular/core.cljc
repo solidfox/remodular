@@ -214,7 +214,7 @@
   (fn [event & {:keys [state
                        event-context
                        descendant-actions]}]
-    (merge (when (fn? bubble-event-generator)
+    (merge (when bubble-event-generator
              (when-let [bubble-event (cond (set? bubble-event-generator)
                                            (when (contains? bubble-event-generator (:name event)) event)
                                            (fn? bubble-event-generator)

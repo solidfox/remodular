@@ -188,7 +188,7 @@
                          {:bubble-event (s/gen ::event)
                           :actions      (s/gen ::action-list)})))))
 (defn create-event-handler-fn
-  {:spec (do (s/def ::bubble-event-generator fn?)
+  {:spec (do (s/def ::bubble-event-generator (s/or fn? set?))
              (s/def ::ignore-descendant-actions (s/nilable boolean?))
              (s/def ::handle-own-events-fn fn?)
              (s/def ::handle-descendant-events-fn fn?)

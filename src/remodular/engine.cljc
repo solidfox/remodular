@@ -10,20 +10,20 @@
 (defn perform-action
   {:spec (s/fdef perform-action
                  :args (s/cat :app-state ::core/state
-                              :action ::core/qualified-action)
+                              :action ::core/action)
                  :ret ::core/state)
    :test (fn []
            (is= (-> {:a {:b "pre"}}
-                    (perform-action (core/create-qualified-action {:fn-and-args [assoc :b "post"]
-                                                                   :state-path  [:a]})))
+                    (perform-action (core/create-action {:fn-and-args [assoc :b "post"]
+                                                         :state-path  [:a]})))
                 {:a {:b "post"}})
            (is= (-> {:b "pre"}
-                    (perform-action (core/create-qualified-action {:fn-and-args [assoc :b "post"]
-                                                                   :state-path  []})))
+                    (perform-action (core/create-action {:fn-and-args [assoc :b "post"]
+                                                         :state-path  []})))
                 {:b "post"})
            (is= (-> {:c {:a {:b "pre"}}}
-                    (perform-action (core/create-qualified-action {:fn-and-args [assoc :b "post"]
-                                                                   :state-path  [:c :a]})))
+                    (perform-action (core/create-action {:fn-and-args [assoc :b "post"]
+                                                         :state-path  [:c :a]})))
                 {:c {:a {:b "post"}}}))}
   [app-state {fn-and-args :fn-and-args
               state-path  :state-path
@@ -43,7 +43,8 @@
 (defn reduce-actions
   [state actions]
   (if (empty? actions)
-    state ;TODO abort swap here?
+    ;TODO abort swap here?
+    state
     (reduce perform-action
             state
             actions)))
@@ -54,9 +55,9 @@
                                             :event-handler-chain ::core/event-handler-chain))}
   [state-atom event event-handler-chain]
   (swap! state-atom
-        (fn [state]
-          (let [actions (core/get-actions event state event-handler-chain)]
-            (reduce-actions state actions)))))
+         (fn [state]
+           (let [actions (core/get-actions event state event-handler-chain)]
+             (reduce-actions state actions)))))
 
 (defmulti perform-services
           (fn [{mode :mode

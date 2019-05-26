@@ -24,6 +24,9 @@
               (apply println args))
      :cljs (apply js/console.warn args)))
 
+(defn needs-render [old-state new-state]
+  (not (identical? old-state new-state)))
+
 (defn modular-component
   "
   A Rum component mixin that enables a component to not be reevaluated when its input is equal.
@@ -126,6 +129,6 @@
                                (engine/perform-services app-state services reduce-event))))]
     (add-watch app-state-atom app-id
                (fn [_ _ old-state new-state]
-                 (if (engine/needs-render old-state new-state)
+                 (if (needs-render old-state new-state)
                    (render-app-state (::render-input new-state)))))
     (render-app-state (::render-input (deref app-state-atom)))))

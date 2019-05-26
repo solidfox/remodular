@@ -43,7 +43,7 @@
 (defn reduce-actions
   [state actions]
   (if (empty? actions)
-    ;TODO abort swap here?
+    ;TODO abort swap when there are no actions?
     state
     (reduce perform-action
             state
@@ -53,18 +53,15 @@
   {:spec (s/fdef reduce-event! :args (s/cat :state-atom any?
                                             :event ::core/event
                                             :event-handler-chain ::core/event-handler-chain))}
-  [state-atom event event-handler-chain]
+  [state-atom event event-handler-chain & {:keys [log-options]}]
   (swap! state-atom
          (fn [state]
-           (let [actions (core/get-actions event state event-handler-chain)]
+           (let [actions (core/get-actions event state event-handler-chain :log-options log-options)]
              (reduce-actions state actions)))))
 
 (defmulti perform-services
           (fn [{mode :mode
                 :as  _state} _services _reduce-event]
             mode))
-
-(defn needs-render [old-state new-state]
-  (not (identical? old-state new-state)))
 
 (when env/debug (stest/instrument))

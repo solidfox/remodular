@@ -6,3 +6,10 @@
     (for [arg args]
       (clojure.pprint/pprint arg)))
   (last args))
+
+(def log spy)
+
+(defn log-if [condition & args]
+  (if condition
+    (apply log args)
+    (last args)))

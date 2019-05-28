@@ -49,15 +49,13 @@
             state
             actions)))
 
-(defn reduce-event!
-  {:spec (s/fdef reduce-event! :args (s/cat :state-atom any?
-                                            :event ::core/event
-                                            :event-handler-chain ::core/event-handler-chain))}
-  [state-atom event event-handler-chain & {:keys [log-options]}]
-  (swap! state-atom
-         (fn [state]
-           (let [actions (core/get-actions event state event-handler-chain :log-options log-options)]
-             (reduce-actions state actions)))))
+(defn reduce-event
+  {:spec (s/fdef reduce-event :args (s/cat :state any?
+                                           :event ::core/event
+                                           :event-handler-chain ::core/event-handler-chain))}
+  [state event event-handler-chain & {:keys [log-options]}]
+  (let [actions (core/get-actions event state event-handler-chain :log-options log-options)]
+    (reduce-actions state actions)))
 
 (defmulti perform-services
           (fn [{mode :mode

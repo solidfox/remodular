@@ -315,13 +315,13 @@
   {:test (fn []
            (yt/is= (resolve-state-paths [(create-event-handler {:event-handler-fn mock-event-handler-fn :event-context {:state-path [:modules :module2]}})
                                          (create-event-handler {:event-handler-fn mock-event-handler-fn :event-context {:state-path [:modules :module1]}})
-                                         (create-event-handler {:event-handler-fn mock-event-handler-fn :event-context {:state-path []}})])
+                                         (create-event-handler {:event-handler-fn mock-event-handler-fn :event-context {:state-path [:app-state]}})])
                    [(create-event-handler {:event-handler-fn mock-event-handler-fn :event-context {:state-path          [:modules :module2]
-                                                                                                   :absolute-state-path [:modules :module1 :modules :module2]}})
+                                                                                                   :absolute-state-path [:app-state :modules :module1 :modules :module2]}})
                     (create-event-handler {:event-handler-fn mock-event-handler-fn :event-context {:state-path          [:modules :module1]
-                                                                                                   :absolute-state-path [:modules :module1]}})
-                    (create-event-handler {:event-handler-fn mock-event-handler-fn :event-context {:state-path          []
-                                                                                                   :absolute-state-path []}})]))}
+                                                                                                   :absolute-state-path [:app-state :modules :module1]}})
+                    (create-event-handler {:event-handler-fn mock-event-handler-fn :event-context {:state-path          [:app-state]
+                                                                                                   :absolute-state-path [:app-state]}})]))}
   [event-handler-chain]
   (->> event-handler-chain
        (reverse)

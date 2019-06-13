@@ -264,7 +264,7 @@
                                                                                   (create-action {:fn-and-args [identity :parent-action]}))})
                         :event         (create-event {:name    :test-event
                                                       :actions [(create-action {:fn-and-args [identity :child-action] :state-path [:modules :parent :modules :child]})]})})
-                     {:state-path []
+                     {:state-path [:modules :parent]
                       :actions    [(create-action {:fn-and-args [identity :child-action] :state-path [:modules :parent :modules :child]})
                                    (create-action {:fn-and-args [identity :parent-action] :state-path [:modules :parent]})]})
              (yt/is= (handle-event
@@ -272,13 +272,13 @@
                         :event-handler (create-event-handler {:event-context event-context :event-handler-fn (fn [_ _])})
                         :event         (create-event {:name ::test-event})})
                      {:name       ::test-event
-                      :state-path []
+                      :state-path [:modules :parent]
                       :actions    []})
              (yt/is= (handle-event
                        {:app-state     app-state
                         :event-handler (create-event-handler {:event-context event-context :event-handler-fn (fn [_ _])})
                         :event         (create-event {:name :test-event})})
-                     {:state-path []
+                     {:state-path [:modules :parent]
                       :actions    []}))
            (comment "More thoroughly tested through get-actions below."))}
 
@@ -308,8 +308,9 @@
         new-event-actions           (->> (or (:actions bubble-event)
                                              (concat (:actions event)
                                                      event-handler-actions)))]
-    (create-event (merge bubble-event
-                         {:actions new-event-actions}))))
+    (create-event (prepend-state-path (merge bubble-event
+                                             {:actions new-event-actions})
+                                      (:state-path event-context)))))
 
 (defn resolve-state-paths
   {:test (fn []

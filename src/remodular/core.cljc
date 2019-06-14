@@ -14,26 +14,30 @@
 
 (defn triggered-by-descendant-of-child?
   {:test (fn []
-           (is (triggered-by-descendant-of-child? [:child :path]
-                                                  {:state-path [:child :path :grandchild :path]}))
-           (is (triggered-by-descendant-of-child? [:child :path]
-                                                  {:state-path (list :child :path)}))
-           (is (triggered-by-descendant-of-child? [:child :path]
-                                                  {:state-path [:child :path]}))
-           (is-not (triggered-by-descendant-of-child? [:child :path]
-                                                      {:state-path [:other :child :path :grandchild :path]})))}
-  [child-state-path event]
+           (is (triggered-by-descendant-of-child? {:state-path [:child :path :grandchild :path]}
+                                                  [:child :path]))
+           (is (triggered-by-descendant-of-child? {:state-path (list :child :path)}
+                                                  [:child :path]))
+           (is (triggered-by-descendant-of-child? {:state-path [:child :path]}
+                                                  [:child :path]))
+           (is-not (triggered-by-descendant-of-child? {:state-path [:other :child :path :grandchild :path]}
+                                                      [:child :path])))}
+  [event child-state-path]
+  {:pre [(map? event)
+         (sequential? child-state-path)]}
   (= child-state-path
      (take (count child-state-path)
            (:state-path event))))
 
 (defn triggered-by-child?
   {:test (fn []
-           (is (triggered-by-child? [:child :path]
-                                    {:state-path [:child :path]}))
-           (is-not (triggered-by-child? [:child :path]
-                                        {:state-path [:child :path :grandchild :path]})))}
-  [child-state-path event]
+           (is (triggered-by-child? {:state-path [:child :path]}
+                                    [:child :path]))
+           (is-not (triggered-by-child? {:state-path [:child :path :grandchild :path]}
+                                        [:child :path])))}
+  [event child-state-path]
+  {:pre [(map? event)
+         (sequential? child-state-path)]}
   (= (:state-path event)
      child-state-path))
 

@@ -1,5 +1,7 @@
-(defproject remodular "0.2.2"
+(defproject remodular "0.2.3"
   :description "FIXME: write description"
+  :deploy-repositories [[:clojars {:url "[https://clojars.org/solidfox/](https://clojars.org/solidfox/)"
+                                   :sign-releases false}]]
   :url ""
   :license {}
   :dependencies [[org.clojure/clojure "1.10.0"]

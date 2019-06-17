@@ -157,7 +157,8 @@
 (s/def ::event-context (s/keys :req-un [::state-path]))
 (s/def ::descendant-actions ::actions)
 
-(s/def ::event-handler-fn fn?)
+(s/def ::event-handler-fn (s/with-gen fn?
+                                      (fn [] (gen/return (fn [])))))
 (def mock-event-handler-fn (fn [event {:keys [state event-context]}]
                              {:bubble-event nil
                               :actions      []}))
@@ -188,7 +189,7 @@
 (defn add-event-handler-fn
   {:test (fn []
            (let [event-handler-fn mock-event-handler-fn]
-             (yt/is= (->> (add-event-handler-fn {:state-path       []
+             (yt/is= (->> (add-event-handler-fn {:state-path          []
                                                  :event-handler-chain []
                                                  :app-trigger-event   (fn app-trigger-event [x y z])}
                                                 event-handler-fn)
@@ -216,13 +217,27 @@
   {:spec (s/fdef trigger-event :args (s/keys* :req-un [::module-context
                                                        (or ::name
                                                            ::event)]
-                                              :opt-un [::data]))}
+                                              :opt-un [::data]))
+   :test (fn [] (let [passed-event   (atom nil)
+                      module-context {:app-trigger-event (fn [event & _] (reset! passed-event event)) :event-handler-chain [] :state-path []}]
+                  (trigger-event :module-context module-context
+                                 :event {:name       :test :data :bar
+                                         :state-path [:foo]})
+                  (yt/is= (deref passed-event) {:name       :test :data :bar
+                                                :state-path [:foo]})
+                  (trigger-event :module-context module-context
+                                 :name :goj
+                                 :data :moj)
+                  (yt/is= (deref passed-event) {:name       :goj
+                                                :data       :moj
+                                                :state-path []})))}
   [& {{app-trigger-event   :app-trigger-event
        event-handler-chain :event-handler-chain} :module-context
       :keys                                      [name data event]}]
-  (let [app-trigger-event app-trigger-event]
-    (app-trigger-event (create-event (or event {:name       name
-                                                :data       data}))
+  (let [app-trigger-event app-trigger-event
+        event-to-trigger  (create-event (or event {:name name
+                                                   :data data}))]
+    (app-trigger-event event-to-trigger
                        :event-handler-chain event-handler-chain)))
 
 (comment "# EVENT HANDLING"

@@ -123,7 +123,8 @@
 (defn create-event
   {:spec (s/fdef create-event :args (s/cat :kwargs (s/keys :opt-un [::name
                                                                     ::data
-                                                                    ::state-path])))
+                                                                    ::state-path
+                                                                    ::actions])))
    :test (fn []
            (yt/is= (create-event {:name       ::old-name
                                   :state-path []
@@ -258,7 +259,11 @@
   [actions action]
   (concat actions [action]))
 
-(defn bubbles-by-default? [event]
+(defn bubbles-by-default?
+  {:test (fn []
+           (yt/is-not (bubbles-by-default? (create-event {:actions []})))
+           (yt/is (bubbles-by-default? (create-event {:name :navigation/go-back}))))}
+  [event]
   (and (keyword? (:name event))
        (not-empty (namespace (:name event)))))
 

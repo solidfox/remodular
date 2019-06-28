@@ -362,11 +362,23 @@
                [])
        (reverse)))
 
+(defmulti get-module-spec
+  "Motivation: Using a defmulti rather than pulling this straight from the module's namespace allows modules to be specified by data in the form of a namespaced keyword."
+  (fn [module-key] module-key))
+
+(defmethod get-module-spec ::test-module-key
+  []
+  {:get-child-module-key (fn [{:keys [props state-path]}])
+   :get-child-props (fn [{:keys [props state-path] {:state {} :module-context {}}}])
+   :handle-event (fn [props] [])
+   :get-services (fn [props] [])})
+
 (defn get-actions
   {:spec (s/fdef get-actions
-                 :args (s/cat :event ::event
-                              :state ::state
-                              :event-handler-chain (s/coll-of ::event-handler))
+                 :args (s/keys :req-un [::root-props
+                                        ::root-module-key
+                                        ::event-handler-chain]
+                               :opt-un [::log-options])
                  :ret ::actions)
    :test (fn []
            (yt/is= (get-actions (create-event {:name       :test-event
@@ -389,7 +401,10 @@
                                     :state-path  [:path 1 :path 2 :path 3]})
                     (create-action {:fn-and-args [conj 1]
                                     :state-path  [:path 1]})]))}
-  [event app-state event-handler-chain & {:keys [log-options]}]
+  [event {:keys [root-props
+                 root-module-spec
+                 event-handler-chain
+                 log-options]}]
   (dt/log-if log-options
              "Getting actions from event handler chain"
              (->> event-handler-chain

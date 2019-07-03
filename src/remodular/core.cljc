@@ -11,6 +11,7 @@
 (s/def ::state map?)
 (s/def ::state-path (s/with-gen (s/and #(not (nil? %)) seqable?)
                                 (fn [] (gen/return []))))
+(def mock-state-path [:mock-module :state])
 
 (defn triggered-by-descendant-of-child?
   {:test (fn []
@@ -156,6 +157,7 @@
                              (fn [] (gen/return []))))
 
 (s/def ::event-context (s/keys :req-un [::state-path]))
+(def mock-event-context {:state-path mock-state-path})
 (s/def ::descendant-actions ::actions)
 
 (s/def ::event-handler-fn (s/with-gen fn?
@@ -176,8 +178,12 @@
   [{:keys [event-handler-fn event-context]}]
   {:event-handler-fn event-handler-fn
    :event-context    event-context})
+(def mock-event-handler (create-event-handler {:event-handler-fn mock-event-handler-fn
+                                               :event-context mock-event-context}))
 (s/def ::event-handler-chain (s/coll-of ::event-handler))
+(def mock-event-handler-chain [mock-event-handler])
 (s/def ::app-trigger-event (s/fspec :args (s/cat :event ::event :kwargs (s/keys* :req-un [::event-handler-chain]))))
+(defn mock-app-trigger-event [event & {:keys [event-handler-chain]}] event)
 (s/def ::module-context (s/keys :req-un [::app-trigger-event ::state-path ::event-handler-chain]))
 (s/def ::parent-context ::module-context)
 (s/def ::child-state-path ::state-path)

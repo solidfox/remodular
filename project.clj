@@ -4,7 +4,7 @@
                                    :sign-releases false}]]
   :url ""
   :license {}
-  :dependencies [[org.clojure/clojure "1.10.0"]
+  :dependencies [[org.clojure/clojure "1.10.1"]
                  [org.clojure/clojurescript "1.10.520"]
                  [org.clojure/test.check "0.10.0-alpha4"]
                  [rum "0.11.2"]

@@ -145,7 +145,7 @@
 (s/def ::module-branch (s/coll-of ::module-instance-identifier))
 (s/def ::event-origin-module-branch ::module-branch)
 (s/def ::app-trigger-event (s/fspec :args (s/cat :event ::event :kwargs (s/keys :req-un [::event-origin-module-branch]))))
-(defn mock-app-trigger-event [event {:keys [event-handler-chain]}] event)
+(defn mock-app-trigger-event [event {:keys [event-origin-module-branch]}] event)
 (s/def ::module-context (s/keys :req-un [::app-trigger-event ::state-path]
                                 :opt-un [::module-branch]))
 (s/def ::parent-context ::module-context)
@@ -216,7 +216,7 @@
         event-to-trigger  (create-event (or event {:name name
                                                    :data data}))]
     (app-trigger-event event-to-trigger
-                       :module-branch module-branch)))
+                       {:event-origin-module-branch module-branch})))
 
 (comment "# EVENT HANDLING"
          "An event handler must look as follows"
@@ -380,7 +380,7 @@
 
 (defmethod get-module-exports ::test-module-key
   [_]
-  {:get-child-props (fn [{:keys [props child-state-path]}] {:state {} :module-context {} :other-prop {}})
+  {:get-child-props (fn [props child-state-path] {:state {} :module-context {} :other-prop {}})
    :handle-event    (fn [event props] [conj 1])
    :get-services    (fn [props] [])})
 
@@ -400,8 +400,8 @@
     :props (if inflated-parent (let [parent-exports  (get-module-exports (:exports-key inflated-parent))
                                      get-child-props (:get-child-props parent-exports)]
                                  (when (fn? get-child-props)
-                                   (get-child-props {:props            (:props inflated-parent)
-                                                     :child-state-path (:state-path deflated-module)})))
+                                   (get-child-props (:props inflated-parent)
+                                                    (:state-path deflated-module))))
                                root-props)
     :absolute-state-path (if inflated-parent (concat (:absolute-state-path inflated-parent)
                                                      (:state-path deflated-module))

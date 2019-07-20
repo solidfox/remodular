@@ -5,7 +5,8 @@
             [clojure.spec.test.alpha :as stest]
             [remodular.core :as core]
             [remodular.devtools :as dt]
-            [remodular.environment :as env]))
+            [remodular.environment :as env]
+            [ysera.test :as yt]))
 
 (defn perform-action
   {:spec (s/fdef perform-action
@@ -50,11 +51,18 @@
             actions)))
 
 (defn reduce-event
-  {:spec (s/fdef reduce-event :args (s/cat :state any?
-                                           :event ::core/event
-                                           :event-handler-chain ::core/event-handler-chain))}
-  [state event event-handler-chain & {:keys [log-options]}]
-  (let [actions (core/get-actions event state event-handler-chain :log-options log-options)]
+  {:spec (s/fdef reduce-event :args (s/cat :event ::core/event
+                                           :root-props (s/keys :req-un [::core/state])
+                                           :event-origin-module-branch ::core/event-origin-module-branch))
+   :test (fn [] (yt/is= (reduce-event {:name :test-event}
+                                      {:state [2]}
+                                      core/mock-module-branch)
+                        [2 1]))}
+  [event root-props event-origin-module-branch & {:keys [log-options]}]
+  (let [actions (core/get-actions event {:root-props                 root-props
+                                         :event-origin-module-branch event-origin-module-branch
+                                         :log-options                log-options})
+        state   (:state root-props)]
     (reduce-actions state actions)))
 
 (defmulti perform-services

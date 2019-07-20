@@ -8,9 +8,10 @@
             [ysera.error :refer [error]]
             [ysera.test :as yt :refer [is is= is-not]]))
 
-(s/def ::state map?)
+(s/def ::state any?)
 (s/def ::state-path (s/with-gen (s/and #(not (nil? %)) seqable?)
                                 (fn [] (gen/return []))))
+(def mock-state-path [:mock-module :state])
 
 (defn triggered-by-descendant-of-child?
   {:test (fn []
@@ -58,39 +59,13 @@
   (update map :state-path (fn [path-to-deep-descendant]
                             (concat state-path path-to-deep-descendant))))
 
-(defn prepend-state-path-to-services
-  {:test (fn []
-           (is= (-> [{} {}]
-                    (prepend-state-path-to-services [:1 :2]))
-                (repeat 2 {:state-path [:1 :2]})))}
-  [services state-path]
-  (map (fn [service] (prepend-state-path service state-path))
-       services))
-
-(defn- prepend-state-path-to-event
-  {:test (fn []
-           (is= (-> {:state-path [:3 :4]
-                     :actions    [{:state-path [:3 :4]}
-                                  {:state-path []}]}
-                    (prepend-state-path-to-event [:1 :2]))
-                {:state-path [:1 :2 :3 :4]
-                 :actions    [{:state-path [:1 :2 :3 :4]}
-                              {:state-path [:1 :2]}]}))}
-  [event path-to-me]
-  (-> event
-      (prepend-state-path path-to-me)
-      (update :actions (fn [actions]
-                         (map (fn [action]
-                                (prepend-state-path action path-to-me))
-                              actions)))))
-
 (s/def ::name keyword?)
 
 (s/def ::data any?)
 
-(s/def ::event (s/keys :req-un [::state-path]
-                       :opt-un [::name
-                                ::data]))
+(s/def ::event (s/keys :opt-un [::name
+                                ::data
+                                ::state-path]))
 (defn create-action
   {:test (fn []
            (yt/is= (create-action {:name        ::test
@@ -108,13 +83,13 @@
     :as          args}]
   (cond
     (map? args)
-    (merge (when-not (nil? name)
+    (merge {:fn-and-args fn-and-args}
+           (when-not (nil? name)
              {:name name})
            (when-not (nil? source-event)
              {:source-event source-event})
            (when-not (nil? state-path)
-             {:state-path state-path})
-           {:fn-and-args fn-and-args})
+             {:state-path state-path}))
 
     (sequential? args)
     {:fn-and-args args}))
@@ -156,6 +131,7 @@
                              (fn [] (gen/return []))))
 
 (s/def ::event-context (s/keys :req-un [::state-path]))
+(def mock-event-context {:state-path mock-state-path})
 (s/def ::descendant-actions ::actions)
 
 (s/def ::event-handler-fn (s/with-gen fn?
@@ -164,55 +140,56 @@
                              {:bubble-event nil
                               :actions      []}))
 
-(s/def ::event-handler (s/keys :req-un [::event-context
-                                        ::event-handler-fn]))
-(defn create-event-handler
-  {:test (fn [] (let [event-handler-fn (fn [event & {:keys [state descendant-actions]}]
-                                         [nil []])]
-                  (yt/is= (create-event-handler {:event-handler-fn event-handler-fn
-                                                 :event-context    {:state-path []}})
-                          {:event-handler-fn event-handler-fn
-                           :event-context    {:state-path []}})))}
-  [{:keys [event-handler-fn event-context]}]
-  {:event-handler-fn event-handler-fn
-   :event-context    event-context})
-(s/def ::event-handler-chain (s/coll-of ::event-handler))
-(s/def ::app-trigger-event (s/fspec :args (s/cat :event ::event :kwargs (s/keys* :req-un [::event-handler-chain]))))
-(s/def ::module-context (s/keys :req-un [::app-trigger-event ::state-path ::event-handler-chain]))
+(s/def ::exports-key any?)
+(s/def ::module-instance-identifier (s/keys :req-un [::exports-key ::state-path]))
+(s/def ::module-branch (s/coll-of ::module-instance-identifier))
+(s/def ::event-origin-module-branch ::module-branch)
+(s/def ::app-trigger-event (s/fspec :args (s/cat :event ::event :kwargs (s/keys :req-un [::event-origin-module-branch]))))
+(defn mock-app-trigger-event [event {:keys [event-handler-chain]}] event)
+(s/def ::module-context (s/keys :req-un [::app-trigger-event ::state-path]
+                                :opt-un [::module-branch]))
 (s/def ::parent-context ::module-context)
 (s/def ::child-state-path ::state-path)
 
-(defn noop-event-handler-fn [_ _] {:actions []})
+(defn noop-event-handler-fn [_ _] [])
 
-(defn create-event-context [module-context]
-  (dissoc module-context :event-handler-chain :app-trigger-event))
-
-(defn add-event-handler-fn
+(defn add-module-instance-identifier
   {:test (fn []
-           (let [event-handler-fn mock-event-handler-fn]
-             (yt/is= (->> (add-event-handler-fn {:state-path          []
-                                                 :event-handler-chain []
-                                                 :app-trigger-event   (fn app-trigger-event [x y z])}
-                                                event-handler-fn)
-                          :event-handler-chain (first) :event-handler-fn)
-                     event-handler-fn)))}
-  [module-context event-handler-fn]
-  (let [event-handler (create-event-handler {:event-handler-fn event-handler-fn
-                                             :event-context    (create-event-context module-context)})]
-    (update module-context :event-handler-chain (fn [event-handler-chain] (cons event-handler event-handler-chain)))))
+           (yt/is= (add-module-instance-identifier {:state-path        [:1 :2]
+                                                    :app-trigger-event mock-app-trigger-event}
+                                                   ::test-module-key)
+                   {:state-path        [:1 :2]
+                    :app-trigger-event mock-app-trigger-event
+                    :module-branch     [{:exports-key ::test-module-key
+                                         :state-path  [:1 :2]}]}))}
+  [module-context module-exports-key]
+  (let [module-instance-identifier {:exports-key module-exports-key
+                                    :state-path  (:state-path module-context)}] ; TODO inject context on event instead
+    (update module-context :module-branch (fn [module-branch]
+                                            (let [module-branch (or module-branch [])]
+                                              (assert vector? module-branch)
+                                              (conj module-branch module-instance-identifier))))))
 
-(s/def ::child-handle-event ::event-handler-fn)
+(s/def ::child-module-exports-key ::exports-key)
 
 (defn create-child-context
   {:spec (s/fdef create-child-context :args (s/keys* :req-un [::parent-context
-                                                              ::child-state-path]
-                                                     :opt-un [::child-handle-event]))}
+                                                              ::child-state-path
+                                                              ::child-module-exports-key]))
+   :test (fn [] (yt/is= (create-child-context :parent-context {:state-path        []
+                                                               :app-trigger-event mock-app-trigger-event}
+                                              :child-state-path [:1 :2]
+                                              :child-module-exports-key ::test-module-key)
+                        {:state-path        [:1 :2]
+                         :app-trigger-event mock-app-trigger-event
+                         :module-branch     [{:exports-key ::test-module-key
+                                              :state-path  [:1 :2]}]}))}
   [& {:keys [parent-context
              child-state-path
-             child-handle-event]}]
+             child-module-exports-key]}]
   (-> parent-context
       (assoc :state-path child-state-path)
-      (add-event-handler-fn (or child-handle-event noop-event-handler-fn))))
+      (add-module-instance-identifier child-module-exports-key)))
 
 (defn trigger-event
   {:spec (s/fdef trigger-event :args (s/keys* :req-un [::module-context
@@ -220,7 +197,7 @@
                                                            ::event)]
                                               :opt-un [::data]))
    :test (fn [] (let [passed-event   (atom nil)
-                      module-context {:app-trigger-event (fn [event & _] (reset! passed-event event)) :event-handler-chain [] :state-path []}]
+                      module-context {:app-trigger-event (fn [event & _] (reset! passed-event event)) :module-branch [] :state-path []}]
                   (trigger-event :module-context module-context
                                  :event {:name       :test :data :bar
                                          :state-path [:foo]})
@@ -232,32 +209,28 @@
                   (yt/is= (deref passed-event) {:name       :goj
                                                 :data       :moj
                                                 :state-path []})))}
-  [& {{app-trigger-event   :app-trigger-event
-       event-handler-chain :event-handler-chain} :module-context
-      :keys                                      [name data event]}]
-  (let [app-trigger-event app-trigger-event
+  [& {:keys [module-context name data event]}]
+  (let [{app-trigger-event :app-trigger-event
+         module-branch     :module-branch} module-context
+        app-trigger-event app-trigger-event
         event-to-trigger  (create-event (or event {:name name
                                                    :data data}))]
     (app-trigger-event event-to-trigger
-                       :event-handler-chain event-handler-chain)))
+                       :module-branch module-branch)))
 
 (comment "# EVENT HANDLING"
          "An event handler must look as follows"
-         '(defn handle-event [event {:keys [state event-context]}]
+         '(defn handle-event [event props]
             {:bubble-event "Create the event that the parent should see here."
              :actions      "Any actions that should be performed in response to the event."})
          "By default actions are appended to the actions already added by children, performing child actions first"
          "and then parent actions. To remove or reorder child actions one may return actions inside the bubble event."
          "When the bubble event contains actions other actions are ignored and the bubble event actions are used as is."
-         "Example:"
-         '(defn handle-event [event {:keys [state event-context]}]
+         "Example: "
+         '(defn handle-event [event props]
             {:bubble-event (create-event {:name    :my-bubbled-event ; :name "may be left out"
                                           :actions (concat [my actions performed before child actions] (:actions event))})
              :actions      [these are ignored and :actions can be left out]}))
-
-(defn append-action
-  [actions action]
-  (concat actions [action]))
 
 (defn bubbles-by-default?
   {:test (fn []
@@ -267,160 +240,246 @@
   (and (keyword? (:name event))
        (not-empty (namespace (:name event)))))
 
+(defn action?
+  {:test (fn []
+           (yt/is (action? {:fn-and-args [cons 1]}))
+           (yt/is (action? {:name        :test
+                            :fn-and-args [cons 1]}))
+           (yt/is-not (action? [cons 1])))}
+  [x]
+  (and (map? x)
+       (contains? x :fn-and-args)))
+
+(defn fn-and-args? [x]
+  (and (sequential? x)
+       (fn? (first x))))
+
+(defn- extract-actions
+  {:test (fn []
+           (yt/is= (extract-actions [cons 1] [:absolute-state-path :state :path])
+                   [(create-action {:fn-and-args [cons 1]
+                                    :state-path  [:absolute-state-path :state :path]})])
+           (yt/is= (extract-actions [[cons 1]] [:absolute-state-path :state :path])
+                   [(create-action {:fn-and-args [cons 1]
+                                    :state-path  [:absolute-state-path :state :path]})])
+           (yt/is= (extract-actions {:actions [[cons 1]]} [:absolute-state-path :state :path])
+                   [(create-action {:fn-and-args [cons 1]
+                                    :state-path  [:absolute-state-path :state :path]})])
+           (yt/is= (extract-actions {:actions [cons 1]} [:absolute-state-path :state :path])
+                   [(create-action {:fn-and-args [cons 1]
+                                    :state-path  [:absolute-state-path :state :path]})])
+           (yt/is= (extract-actions {:actions nil} [:absolute-state-path :state :path])
+                   [])
+           (yt/is= (extract-actions nil [:absolute-state-path :state :path])
+                   []))}
+  [event-handler-result absolute-state-path]
+  (if (not event-handler-result)
+    []
+    (let [new-actions-or-fn-and-args (if-let [actions (:actions event-handler-result)] actions event-handler-result)
+          single-action?             (boolean (or (fn? (first new-actions-or-fn-and-args))
+                                                  (:fn-and-args new-actions-or-fn-and-args)))
+          event-handler-actions      (as-> new-actions-or-fn-and-args $
+                                           (if single-action? [$] $)
+                                           (map (fn [action-or-fn-and-args]
+                                                  (let [action-state-path (concat absolute-state-path
+                                                                                  (:state-path action-or-fn-and-args))]
+                                                    (cond (action? action-or-fn-and-args)
+                                                          (create-action (assoc action-or-fn-and-args
+                                                                           :state-path action-state-path))
+                                                          (fn-and-args? action-or-fn-and-args)
+                                                          (create-action {:fn-and-args action-or-fn-and-args
+                                                                          :state-path  action-state-path})
+                                                          :else nil)))
+                                                $))]
+      (remove nil? event-handler-actions))))
+
+(s/def ::inflated-module map?)
+
+(defn create-source-event [event]
+  (dissoc event :actions))
+
 (defn handle-event
   {:spec (s/fdef handle-event
-                 :args (s/cat :kwargs (s/keys :req-un [::app-state
-                                                       ::event-handler
-                                                       ::event]))
+                 :args (s/cat :event ::event
+                              :module-handle-event (s/nilable fn?)
+                              :inflated-module ::inflated-module)
                  :ret ::event)
    :test (fn []
            (let [app-state     {:modules {:parent {:modules :child}}}
                  event-context {:absolute-state-path [:modules :parent]
                                 :state-path          [:modules :parent]}]
+             (handle-event
+               (create-event {:name :test-event
+                              :data :event-data})
+               (fn [event {:keys [state]}]
+                 (yt/is= state {:modules :child})
+                 (yt/is (triggered-by-self? event))
+                 (yt/is= (:name event) :test-event)
+                 (yt/is= (:data event) :event-data)
+                 (create-action {:fn-and-args [identity]}))
+               {:props               {:state {:modules :child}}
+                :state-path          []
+                :absolute-state-path []})
              (yt/is= (handle-event
-                       {:app-state     app-state
-                        :event-handler (create-event-handler {:event-context    event-context
-                                                              :event-handler-fn (fn [event {:keys [state
-                                                                                                   event-context]}]
-                                                                                  (yt/is= state {:modules :child})
-                                                                                  (yt/is (triggered-by-self? event))
-                                                                                  (yt/is= (:name event) :test-event)
-                                                                                  (create-action {:fn-and-args [identity :parent-action]}))})
-                        :event         (create-event {:name    :test-event
-                                                      :actions [(create-action {:fn-and-args [identity :child-action] :state-path [:modules :parent :modules :child]})]})})
+                       (create-event {:name    :test-event
+                                      :data    :event-data
+                                      :actions [(create-action {:fn-and-args [identity :child-action] :state-path [:modules :parent :modules :child]})]})
+                       (fn [_ _] (create-action {:fn-and-args [identity :parent-action]}))
+                       {:props               {:state {:modules :child}}
+                        :state-path          [:modules :parent]
+                        :absolute-state-path [:modules :parent]})
                      {:state-path [:modules :parent]
                       :actions    [(create-action {:fn-and-args [identity :child-action] :state-path [:modules :parent :modules :child]})
-                                   (create-action {:fn-and-args [identity :parent-action] :state-path [:modules :parent]})]})
+                                   (create-action {:fn-and-args [identity :parent-action] :state-path [:modules :parent] :source-event {:name       :test-event
+                                                                                                                                        :data       :event-data
+                                                                                                                                        :state-path []}})]})
              (yt/is= (handle-event
-                       {:app-state     app-state
-                        :event-handler (create-event-handler {:event-context event-context :event-handler-fn (fn [_ _])})
-                        :event         (create-event {:name ::test-event})})
+                       (create-event {:name       ::test-event
+                                      :state-path [:child]})
+                       (fn [_ _])
+                       {:props               {:state {}}
+                        :state-path          [:modules :parent]
+                        :absolute-state-path [:modules :parent]})
                      {:name       ::test-event
-                      :state-path [:modules :parent]
+                      :state-path [:modules :parent :child]
                       :actions    []})
              (yt/is= (handle-event
-                       {:app-state     app-state
-                        :event-handler (create-event-handler {:event-context event-context :event-handler-fn (fn [_ _])})
-                        :event         (create-event {:name :test-event})})
-                     {:state-path [:modules :parent]
-                      :actions    []}))
-           (comment "More thoroughly tested through get-actions below."))}
+                       (create-event {:name       :test-event
+                                      :state-path []})
+                       (fn [_ _] [cons 1])
+                       {:props {:state {}} :state-path [] :absolute-state-path []})
+                     {:state-path []
+                      :actions    [(create-action {:fn-and-args  [cons 1]
+                                                   :source-event {:name :test-event :state-path []}
+                                                   :state-path   []})]})))}
+  [event module-handle-event inflated-module]
+  (let [event-handler-result          (when (fn? module-handle-event) (module-handle-event event (:props inflated-module)))
+        bubble-event                  (or (:bubble-event event-handler-result)
+                                          (when (bubbles-by-default? event) (dissoc event :actions)))
+        new-actions                   (extract-actions event-handler-result (:absolute-state-path inflated-module))
+        new-actions-with-source-event (->> new-actions
+                                           (map (fn [action]
+                                                  (assoc action :source-event (create-source-event event)))))]
+    (create-event
+      (-> bubble-event
+          (assoc :actions
+                 (or (:actions bubble-event) (concat (:actions event)
+                                                     new-actions-with-source-event)))
+          (prepend-state-path (:state-path inflated-module))))))
 
-  [{:keys [app-state
-           event-handler
-           event]}]
-  (let [event-context               (:event-context event-handler)
-        absolute-handler-state-path (:absolute-state-path event-context)
-        _                           (assert (not (nil? absolute-handler-state-path)) "Remodular: The event handler passed to handle-event did not have an absolute state path. Before passing an event handler to handle-event its relative state path must be resolved to an absolute state path.")
-        event-handler-fn            (:event-handler-fn event-handler)
-        module-local-state          (get-in app-state absolute-handler-state-path)
-        event-handler-result        (event-handler-fn event {:state         module-local-state
-                                                             :event-context event-context})
-        bubble-event                (or (:bubble-event event-handler-result)
-                                        (when (bubbles-by-default? event) (dissoc event :actions)))
-        new-actions-or-fn-and-args  (if-let [actions (:actions event-handler-result)] actions event-handler-result)
-        action-not-wrapped-in-list? (or (fn? (first new-actions-or-fn-and-args))
-                                        (:fn-and-args new-actions-or-fn-and-args))
-        event-handler-actions       (as-> new-actions-or-fn-and-args $
-                                          (if action-not-wrapped-in-list? [$] $)
-                                          (map (fn [action-params]
-                                                 (create-action (merge (if (map? action-params)
-                                                                         action-params
-                                                                         {:fn-and-args action-params})
-                                                                       {:state-path (concat absolute-handler-state-path
-                                                                                            (:state-path action-params))}))) $))
-        new-event-actions           (->> (or (:actions bubble-event)
-                                             (concat (:actions event)
-                                                     event-handler-actions)))]
-    (create-event (prepend-state-path (merge bubble-event
-                                             {:actions new-event-actions})
-                                      (:state-path event-context)))))
+(defmulti get-module-exports
+          ;(str "Motivation: Using a defmulti rather than pulling this straight from the module's namespace allows"
+          ;     "modules to be specified by data in the form of a namespaced keyword."
+          ;     "It may also enable looking up modules by other keys such as state path.")
+          (fn [exports-key] exports-key))
 
-(defn resolve-state-paths
-  {:test (fn []
-           (yt/is= (resolve-state-paths [(create-event-handler {:event-handler-fn mock-event-handler-fn :event-context {:state-path [:modules :module2]}})
-                                         (create-event-handler {:event-handler-fn mock-event-handler-fn :event-context {:state-path [:modules :module1]}})
-                                         (create-event-handler {:event-handler-fn mock-event-handler-fn :event-context {:state-path [:app-state]}})])
-                   [(create-event-handler {:event-handler-fn mock-event-handler-fn :event-context {:state-path          [:modules :module2]
-                                                                                                   :absolute-state-path [:app-state :modules :module1 :modules :module2]}})
-                    (create-event-handler {:event-handler-fn mock-event-handler-fn :event-context {:state-path          [:modules :module1]
-                                                                                                   :absolute-state-path [:app-state :modules :module1]}})
-                    (create-event-handler {:event-handler-fn mock-event-handler-fn :event-context {:state-path          [:app-state]
-                                                                                                   :absolute-state-path [:app-state]}})]))}
-  [event-handler-chain]
-  (->> event-handler-chain
-       (reverse)
-       (reduce (fn [event-handler-chain-with-resolved-state-paths event-handler]
-                 (let [path-to-parent             (or (-> event-handler-chain-with-resolved-state-paths
-                                                          (last)
-                                                          (get-in [:event-context :absolute-state-path]))
-                                                      [])
-                       full-path-to-event-handler (concat path-to-parent (get-in event-handler [:event-context :state-path]))]
-                   (conj event-handler-chain-with-resolved-state-paths
-                         (assoc-in event-handler [:event-context :absolute-state-path]
-                                   full-path-to-event-handler))))
-               [])
-       (reverse)))
+(defmethod get-module-exports :default
+  [exports-key]
+  (do (dt/warn (str "Could not find any exports for key " exports-key))
+      nil))
 
-(defmulti get-module-spec
-  "Motivation: Using a defmulti rather than pulling this straight from the module's namespace allows modules to be specified by data in the form of a namespaced keyword."
-  (fn [module-key] module-key))
+(defmethod get-module-exports ::test-module-key
+  [_]
+  {:get-child-props (fn [{:keys [props child-state-path]}] {:state {} :module-context {} :other-prop {}})
+   :handle-event    (fn [event props] [conj 1])
+   :get-services    (fn [props] [])})
 
-(defmethod get-module-spec ::test-module-key
-  []
-  {:get-child-module-key (fn [{:keys [props state-path]}])
-   :get-child-props (fn [{:keys [props state-path] {:state {} :module-context {}}}])
-   :handle-event (fn [props] [])
-   :get-services (fn [props] [])})
+(defn inflate-module
+  {:test (fn [] (yt/is= (inflate-module {:exports-key ::test-module-1-key
+                                         :state-path  [:module-2]}
+                                        {:inflated-parent {:exports-key         ::test-module-key
+                                                           :props               {}
+                                                           :state-path          [:module-1]
+                                                           :absolute-state-path [:module-1]}})
+                        {:exports-key         ::test-module-1-key
+                         :props               {:state {} :module-context {} :other-prop {}}
+                         :state-path          [:module-2]
+                         :absolute-state-path [:module-1 :module-2]}))}
+  [deflated-module {:keys [inflated-parent root-props]}]
+  (assoc deflated-module
+    :props (if inflated-parent (let [parent-exports  (get-module-exports (:exports-key inflated-parent))
+                                     get-child-props (:get-child-props parent-exports)]
+                                 (when (fn? get-child-props)
+                                   (get-child-props {:props            (:props inflated-parent)
+                                                     :child-state-path (:state-path deflated-module)})))
+                               root-props)
+    :absolute-state-path (if inflated-parent (concat (:absolute-state-path inflated-parent)
+                                                     (:state-path deflated-module))
+                                             (:state-path deflated-module))))
+
+(def mock-module-branch
+  [{:exports-key ::test-module-key
+    :state-path  []}
+   {:exports-key ::test-module-2-key
+    :state-path  [:module-1]}
+   {:exports-key ::test-module-3-key
+    :state-path  [:module-2]}])
+
+(defn inflate-module-branch
+  {:test (fn [] (yt/is= (inflate-module-branch mock-module-branch {})
+                        [{:exports-key         ::test-module-key
+                          :props               {}
+                          :state-path          []
+                          :absolute-state-path []}
+                         {:exports-key         ::test-module-2-key
+                          :props               {:state {} :module-context {} :other-prop {}}
+                          :state-path          [:module-1]
+                          :absolute-state-path [:module-1]}
+                         {:exports-key         ::test-module-3-key
+                          :props               nil
+                          :state-path          [:module-2]
+                          :absolute-state-path [:module-1 :module-2]}]))}
+  [module-branch root-props]
+  (->> module-branch
+       (reduce (fn [inflated-module-branch deflated-module]
+                 (conj inflated-module-branch
+                       (let [inflated-parent (last inflated-module-branch)]
+                         (inflate-module deflated-module (if inflated-parent
+                                                           {:inflated-parent inflated-parent}
+                                                           {:root-props root-props})))))
+
+               [])))
+
+(defn get-handle-event [{:keys [exports-key]}]
+  (:handle-event (get-module-exports exports-key)))
 
 (defn get-actions
   {:spec (s/fdef get-actions
-                 :args (s/keys :req-un [::root-props
-                                        ::root-module-key
-                                        ::event-handler-chain]
-                               :opt-un [::log-options])
+                 :args (s/cat :event ::event
+                              :kwargs (s/keys :req-un [::root-props
+                                                       ::event-origin-module-branch]
+                                              :opt-un [::log-options]))
                  :ret ::actions)
    :test (fn []
-           (yt/is= (get-actions (create-event {:name       :test-event
-                                               :state-path []})
-                                {}
-                                [(create-event-handler {:event-handler-fn (fn [& args] {:actions [(create-action {:fn-and-args [cons 4]
-                                                                                                                  :state-path  [:path 4]})
-                                                                                                  [cons 3]]})
-                                                        :event-context    {:state-path [:path 3]}})
-                                 (create-event-handler {:event-handler-fn (fn [& args] (create-action {:fn-and-args [cons 2]
-                                                                                                       :state-path  [:path 3]}))
-                                                        :event-context    {:state-path [:path 2]}})
-                                 (create-event-handler {:event-handler-fn (fn [& args] [conj 1])
-                                                        :event-context    {:state-path [:path 1]}})])
-                   [(create-action {:fn-and-args [cons 4]
-                                    :state-path  [:path 1 :path 2 :path 3 :path 4]})
-                    (create-action {:fn-and-args [cons 3]
-                                    :state-path  [:path 1 :path 2 :path 3]})
-                    (create-action {:fn-and-args [cons 2]
-                                    :state-path  [:path 1 :path 2 :path 3]})
-                    (create-action {:fn-and-args [conj 1]
-                                    :state-path  [:path 1]})]))}
+           (let [test-event (create-event {:name       :test-event
+                                           :state-path []})]
+             (yt/is= (get-actions test-event
+                                  {:root-props                 {}
+                                   :event-origin-module-branch [(first mock-module-branch)]})
+                     [(create-action {:fn-and-args  [conj 1]
+                                      :source-event (create-source-event test-event)
+                                      :state-path   []})])
+             (yt/is= (get-actions test-event
+                                  {:root-props                 {}
+                                   :event-origin-module-branch mock-module-branch})
+                     [(create-action {:fn-and-args  [conj 1]
+                                      :source-event {:state-path [:module-1]}
+                                      :state-path   []})])))}
   [event {:keys [root-props
-                 root-module-spec
-                 event-handler-chain
+                 event-origin-module-branch
                  log-options]}]
-  (dt/log-if log-options
-             "Getting actions from event handler chain"
-             (->> event-handler-chain
-                  (resolve-state-paths)
-                  (reduce
-                    (fn [reduced-event event-handler]
-                      (dt/log-if log-options
-                                 "Event handler"
-                                 event-handler
-                                 "Event"
-                                 reduced-event
-                                 "Result"
-                                 (handle-event {:app-state     app-state
-                                                :event-handler event-handler
-                                                :event         reduced-event})))
-                    event)
-                  :actions)))
+  (let [inflated-module-branch (inflate-module-branch event-origin-module-branch root-props)]
+    (dt/log-if log-options
+               "Getting actions..."
+               (->> inflated-module-branch
+                    (reverse)
+                    (reduce
+                      (fn [reduced-event inflated-module]
+                        (dt/log-if log-options "Module" (select-keys inflated-module [:state-path :exports-key]) "Event" reduced-event
+                                   "Result"
+                                   (let [module-handle-event (get-handle-event inflated-module)]
+                                     (handle-event reduced-event module-handle-event inflated-module))))
+                      event)
+                    :actions))))
 
 (when env/debug (stest/instrument))

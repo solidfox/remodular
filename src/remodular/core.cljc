@@ -125,10 +125,12 @@
   [event]
   (empty? (:state-path event)))
 
+(s/def ::fn-and-args (s/cat :fn fn? :args (s/* any?)))
 (s/def ::action map?)
-(s/def ::actions (s/with-gen (s/and seqable?
-                                    (s/coll-of ::action))
-                             (fn [] (gen/return []))))
+(s/def ::actions (s/or ::fn-and-args
+                       (s/coll-of ::fn-and-args)
+                       ::action
+                       (s/coll-of ::action)))
 
 (s/def ::event-context (s/keys :req-un [::state-path]))
 (def mock-event-context {:state-path mock-state-path})
@@ -372,6 +374,19 @@
           ;     "modules to be specified by data in the form of a namespaced keyword."
           ;     "It may also enable looking up modules by other keys such as state path.")
           (fn [exports-key] exports-key))
+
+(s/def ::props (s/keys :req-un [::state]))
+(s/def ::get-child-props (s/fspec :args (s/cat :props ::props :child-state-path ::child-state-path)
+                                  :ret ::props))
+(s/def ::handle-event-result (s/or ::actions
+                                   (s/keys :req-un [::bubble-event]
+                                           :opt-un [::actions])))
+(s/def ::handle-event (s/fspec :args (s/cat :event ::event :props ::props)
+                               :ret ::handle-event-result))
+(s/def ::get-services (s/fspec :args (s/cat :props ::props)
+                               :ret (s/nilable coll?)))
+(s/def ::module-exports (s/keys :opt-un [::get-child-props ::handle-event ::get-services]))
+(s/fdef get-module-exports :ret ::module-exports)
 
 (defmethod get-module-exports :default
   [exports-key]

@@ -13,3 +13,6 @@
   (if condition
     (apply log args)
     (last args)))
+
+(defn warn [& args]
+  (apply spy (concat ["WARNING:"] args)))

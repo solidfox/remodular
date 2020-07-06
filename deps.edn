@@ -1,0 +1,2 @@
+{rum   {:mvn/version "0.11.2"}
+ ysera {:mvn/version "1.2.0"}}

@@ -168,9 +168,7 @@
   (let [module-instance-identifier {:exports-key module-exports-key
                                     :state-path  (:state-path module-context)}] ; TODO inject context on event instead
     (update module-context :module-branch (fn [module-branch]
-                                            (let [module-branch (or module-branch [])]
-                                              (assert vector? module-branch)
-                                              (conj module-branch module-instance-identifier))))))
+                                            (conj (or module-branch []) module-instance-identifier)))))
 
 (s/def ::child-module-exports-key ::exports-key)
 

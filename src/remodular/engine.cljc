@@ -32,14 +32,8 @@
               :as         _action}]
   (let [[change-fn & args] fn-and-args]
     (if (empty? state-path)
-      (apply change-fn
-             app-state
-             args)
-      (apply update-in
-             app-state
-             state-path
-             change-fn
-             args))))
+      (apply change-fn app-state args)
+      (apply update-in app-state state-path change-fn args))))
 
 (defn reduce-actions
   [state actions]
